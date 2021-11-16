@@ -1,0 +1,27 @@
+apiVersion: config.openshift.io/v1
+kind: OAuth
+metadata:
+  name: cluster
+spec:
+  identityProviders:
+    - name: ldapidp
+	  mappingMethod: claim
+      type: LDAP
+	  ldap:
+        attributes:
+		  id:
+            - dn
+          email:
+            - mail
+          name:
+            - displayName
+            - cn
+          preferredUsername:
+            - cn
+        bindDN: 'cn=openshift,ou=DCT,dc=dev,dc=example,dc=ru'
+        bindPassword:
+          name: ldap-bind-password-t9hd5
+        insecure: true
+        url: >-
+          ldap://ldap.dev.example.ru:389/dc=dev,dc=example,dc=ru?cn?sub?(&(objectClass=inetOrgPerson)(isMemberOf=cn=OpenShiftUsers,ou=DEV,dc=dev,dc=example,dc=ru)(!(isMemberOf=cn=LockedUsers,ou=DEV,dc=dev,dc=example,dc=ru))(!(isMemberOf=cn=PwdAccountLocked,ou=DEV,dc=dev,dc=example,dc=ru))(!(isMemberOf=cn=PEW,ou=DEV,dc=dev,dc=example,dc=ru)))
+

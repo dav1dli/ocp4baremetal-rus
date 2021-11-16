@@ -1,0 +1,24 @@
+$TTL 1W
+@	IN	SOA	ns.dev.example.ru.	root (
+			2019070700	; serial
+			3H		; refresh (3 hours)
+			30M		; retry (30 minutes)
+			2W		; expiry (2 weeks)
+			1W )		; minimum (1 week)
+	IN	NS	ns.dev.example.ru.
+;
+ns.dev.example.ru.			IN	A	10.149.1.24
+ns1.dev.example.ru.			IN	A	10.149.1.63
+ns2.dev.example.ru.			IN	A	10.149.1.22
+okd4-lb1.dev.example.ru.		IN      A       10.149.1.180
+okd4-lb1.okd4.dev.example.ru.	IN	A       10.149.1.180
+api.okd4.dev.example.ru.		IN	A	10.149.1.180 
+api-int.okd4.dev.example.ru.	IN	A	10.149.1.180
+*.okd4.dev.example.ru.		IN	A	10.149.1.180
+okd4-bstr.okd4.dev.example.ru.	IN	A	10.149.1.183
+okd4-mstr1.okd4.dev.example.ru.	IN	A	10.149.1.184 
+okd4-mstr2.okd4.dev.example.ru.	IN	A	10.149.1.185 
+okd4-mstr3.okd4.dev.example.ru.	IN	A	10.149.1.186 
+okd4-wrk1.okd4.dev.example.ru.	IN	A	10.149.1.187 
+okd4-wrk2.okd4.dev.example.ru.	IN	A	10.149.1.188
+okd4-wrk3.okd4.dev.example.ru.	IN	A	10.149.1.189

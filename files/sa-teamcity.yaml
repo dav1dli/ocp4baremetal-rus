@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/name: teamcity
+  name: teamcity
+  namespace: tc-okd4
+secrets:
+- name: teamcity-token-gp9g6
+- name: teamcity-dockercfg-pt28k
+imagePullSecrets:
+- name: teamcity-dockercfg-pt28k

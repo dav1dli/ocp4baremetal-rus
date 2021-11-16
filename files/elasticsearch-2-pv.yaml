@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: elasticsearch-pv-2
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    path: /srv/nfs/okd4/sysvol/elasticsearch-2
+    server: nfs.dev.example.ru
+    readOnly: false
+  storageClass: nfs
