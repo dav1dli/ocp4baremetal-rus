@@ -4,17 +4,18 @@
 
 ## ETCD backup
 
-[Бэкап создан](https://docs.okd.io/latest/post_installation_configuration/cluster-tasks.html#backing-up-etcd-data_post-install-cluster-tasks) на gpbu22253@gpbu22253:~/okd4-etcd-backup_2021-10-29_134253.tar.gz.
+[Бэкап создан](https://docs.okd.io/latest/post_installation_configuration/cluster-tasks.html#backing-up-etcd-data_post-install-cluster-tasks) на admin@bastion:~/okd4-etcd-backup_2021-10-29_134253.tar.gz.
 
 Из него кластер может быть [восстановлен](https://docs.okd.io/latest/post_installation_configuration/cluster-tasks.html#dr-scenario-2-restoring-cluster-state_post-install-cluster-tasks) в изначальное состояние.
 
 ## Хранение данных
 
-Openshift использует Persistent Volume (PV) фреймворк для управления данными, требующими сохранности. Админы кластера создают PV, а пользователи на уровне проектов могут создавать Persistent Volume Claims (PVCs) для запроса томов хранения данных.
+Openshift использует Persistent Volume (PV) фреймворк для управления данными, требующими сохранности. 
+Админы кластера создают PV, а пользователи на уровне проектов могут создавать Persistent Volume Claims (PVCs) для запроса томов хранения данных.
 
 ### NFS Server
 
-Для хранения данных используется серевер nfs.dev.gazprombank.ru, поддерживающий NFS.
+Для хранения данных используется серевер nfs.dev.example.ru, поддерживающий NFS.
 
 Статус: `systemctl status nfs-server`
 
@@ -47,7 +48,8 @@ systemctl reload-or-restart nfs-server
 
 ## Image registry
 
-В процессе установки кластера Image registry, имеющий требования по хранению данных, установлен в "Removed". После завершения установки необходимо сконфигурировать Image Registry в соответствии с требованиями установки.
+В процессе установки кластера Image registry, имеющий требования по хранению данных, установлен в "Removed".
+После завершения установки необходимо сконфигурировать Image Registry в соответствии с требованиями установки.
 
 Removed -> Managed: `oc patch configs.imageregistry.operator.openshift.io cluster --type merge --patch '{"spec":{"managementState":"Managed"}}'`
 
@@ -61,7 +63,7 @@ ToDo: переключиться на использование NFS томов.
 
 ## Insecure registries
 
-Каталог контейнеров: http://nexus.dev.gazprombank.ru:60001 - каталог сконфигурированный использовать http, а не https протокол.
+Каталог контейнеров: http://nexus.dev.example.ru:60001 - каталог сконфигурированный использовать http, а не https протокол.
 В этом случае при попытке скачать образ будет выдана ошибка "http: server gave HTTP response to HTTPS client". Для решения этой проблемы следует сконфигурировать каталог с поддержкой https.
 Если это невозможно, то можно [включить каталог в список допустимых незащищенных каталогов](https://computingforgeeks.com/allow-insecure-registries-in-openshift-okd-4-cluster/).
 
@@ -70,7 +72,7 @@ CLI: `oc edit image.config.openshift.io/cluster`
 spec:
   registrySources:
     insecureRegistries:
-      - 'nexus.dev.gazprombank.ru:60001'
+      - 'nexus.dev.example.ru:60001'
 ```
 
 Web Console: Adminstration -> Cluster Settings -> Image
@@ -78,17 +80,17 @@ Web Console: Adminstration -> Cluster Settings -> Image
 spec:
   registrySources:
     insecureRegistries:
-      - 'nexus.dev.gazprombank.ru:60001'
+      - 'nexus.dev.example.ru:60001'
 ```
 
 ## LDAP
 
 LDAP:
-* server: ldaps://ldap.dev.gazprombank.ru:636, ldap://ldap.dev.gazprombank.ru:389
-* URL: ldap://127.0.0.1:1389/dc=dev,dc=gazprombank,dc=ru?cn?sub?(&(objectClass=inetOrgPerson)(isMemberOf=cn=OpenShiftUsers,ou=DCT,dc=dev,dc=gazprombank,dc=ru)(!(isMemberOf=cn=LockedUsers,ou=DCT,dc=dev,dc=gazprombank,dc=ru))(!(isMemberOf=cn=PwdAccountLocked,ou=DCT,dc=dev,dc=gazprombank,dc=ru))(!(isMemberOf=cn=PEW,ou=DCT,dc=dev,dc=gazprombank,dc=ru)))
-* bindDN: cn=openshift,ou=DCT,dc=dev,dc=gazprombank,dc=ru
+* server: ldaps://ldap.dev.example.ru:636, ldap://ldap.dev.example.ru:389
+* URL: ldap://127.0.0.1:1389/dc=dev,dc=example,dc=ru?cn?sub?(&(objectClass=inetOrgPerson)(isMemberOf=cn=OpenShiftUsers,ou=DEV,dc=dev,dc=example,dc=ru)(!(isMemberOf=cn=LockedUsers,ou=DEV,dc=dev,dc=example,dc=ru))(!(isMemberOf=cn=PwdAccountLocked,ou=DEV,dc=dev,dc=example,dc=ru))(!(isMemberOf=cn=PEW,ou=DEV,dc=dev,dc=example,dc=ru)))
+* bindDN: cn=openshift,ou=DEV,dc=dev,dc=example,dc=ru
 
-Test: `ldapsearch -x -b "dc=dev,dc=gazprombank,dc=ru" -H ldap://ldap.dev.gazprombank.ru -D cn=openshift,ou=DCT,dc=dev,dc=gazprombank,dc=ru -W "objectclass=account"  cn uid displayName`
+Test: `ldapsearch -x -b "dc=dev,dc=example,dc=ru" -H ldap://ldap.dev.example.ru -D cn=openshift,ou=DEV,dc=dev,dc=example,dc=ru -W "objectclass=account"  cn uid displayName`
 
 Create LDAP secret with bindPassword: `oc create secret generic ldap-bind-password-t9hd5 --from-literal=bindPassword=*** -n openshift-config`
 
@@ -98,7 +100,7 @@ OAuth config files/ldap-cr.yaml: `oc apply -f ldap-cr.yaml`
 
 Создать роль админов files/role-for-cluster-admin-group.yaml: `oc apply -f role-for-cluster-admin-group.yaml`
 
-Проверка: `oc login -u gpbu22253 --server=https://api.okd.dev.gazprombank.ru:6443`
+Проверка: `oc login -u admin --server=https://api.okd.dev.example.ru:6443`
 
 Ожидаемый результат: доступ ко всем проектам.
 
@@ -107,9 +109,9 @@ OAuth config files/ldap-cr.yaml: `oc apply -f ldap-cr.yaml`
 
 Для синхронизации требуется конфигурационный файл.
 
-* url: ldap://ldap.dev.gazprombank.ru:389 
-* bindDN: cn=openshift,ou=DCT,dc=dev,dc=gazprombank,dc=ru
-* bindPassword: vh***t
+* url: ldap://ldap.dev.example.ru:389 
+* bindDN: cn=openshift,ou=DEV,dc=dev,dc=example,dc=ru
+* bindPassword: passw0rd
 * insecure: true
 * ca: n/a (insecure=yes)
 
@@ -194,15 +196,14 @@ OKD4 предоставляет в OperatorHub GitLab Runner Operator. Опер�
 
 Параметры:
 * проект: gitlab-test
-* URL: http://gitlab.dev.gazprombank.ru/
+* URL: http://gitlab.dev.example.ru/
 * Token: 9Sd-WnA*****
 * Tags: openshift, build, test
 
 Сконфигурировать GitLab pipeline исполняться на раннере: внести 'tags: openshift' в те джобы пайплайна, которые должны исполняться на раннере с тагом openshift. 
 
-Пример конфигурации пайплайна: .gitlab-ci.yml
+Пример конфигурации пайплайна: files/gitlab-ci.yml
 
-Пример исполнения пайплайна: http://gitlab.dev.gazprombank.ru/gpbu22253/okd4-install/-/pipelines/158590
 
 ## Интеграция с TeamCity
 
@@ -211,8 +212,8 @@ OKD4 предоставляет в OperatorHub GitLab Runner Operator. Опер�
 Параметры облачного профиля:
 * name: okd4
 * type: Kubernetes
-* Server URL: http://teamcity.dev.gazprombank.ru/
-* Kubernetes API: https://api.okd.dev.gazprombank.ru:6443
+* Server URL: http://teamcity.dev.example.ru/
+* Kubernetes API: https://api.okd.dev.example.ru:6443
 * namespace: tc-okd4
 * Authentication strategy: token
 
