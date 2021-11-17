@@ -1,0 +1,45 @@
+kind: CronJob
+apiVersion: batch/v1
+metadata:
+  annotations:
+    openshift.io/description: LDAP groups sync
+  labels:
+    app: ldap-sync
+  name: ldap-sync
+  namespace: ldap-sync
+spec:                                                                      
+  schedule: '@hourly'
+  suspend: false  
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: "Never"
+          serviceAccountName: "ldap-sync"
+          containers:
+            - name: ldap-sync
+              image: "openshift/origin-cli:latest"
+              command:
+                - "/bin/bash"
+                - "-c"
+                - oc adm groups sync --type=ldap
+                - --sync-config=/etc/config/ldap-sync.yaml
+                - --whitelist=/etc/config/whitelist.txt
+                - --confirm 
+              volumeMounts:
+                - mountPath: "/etc/config"
+                  name: "ldap-sync-volume"
+                - mountPath: "/etc/secrets"
+                  name: "ldap-bind-password"
+          volumes:
+            - name: "ldap-sync-volume"
+              configMap:
+                name: "ldap-sync"
+            - name: "ldap-bind-password"
+              secret:
+                secretName: "ldap-sync"                                  
+          terminationGracePeriodSeconds: 30
+          activeDeadlineSeconds: 500
+          dnsPolicy: "ClusterFirst"

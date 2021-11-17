@@ -1,0 +1,2 @@
+cn=OpenShift-Cluster-Admins,ou=DEV,dc=dev,dc=example,dc=ru
+cn=OpenShift-Cluster-Viewers,ou=DEV,dc=dev,dc=example,dc=ru
