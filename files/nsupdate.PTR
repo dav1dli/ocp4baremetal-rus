@@ -1,0 +1,8 @@
+server 10.149.1.22
+zone 1.149.10.in-addr.arpa
+add 211.1.149.10.in-addr.arpa. 3600 PTR okd4-i0.okd.dev.example.ru.
+add 212.1.149.10.in-addr.arpa. 3600 PTR okd4-i1.okd.dev.example.ru.
+add 213.1.149.10.in-addr.arpa. 3600 PTR okd4-i2.okd.dev.example.ru.
+send
+quit
+

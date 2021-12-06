@@ -1,0 +1,9 @@
+server 10.149.1.22
+delete okd4-i0.okd.dev.example.ru. A
+add okd4-i0.okd.dev.example.ru. 3600 A 10.149.1.211
+delete okd4-i1.okd.dev.example.ru. A
+add okd4-i1.okd.dev.example.ru. 3600 A 10.149.1.212
+delete okd4-i2.okd.dev.example.ru. A
+add  okd4-i2.okd.dev.example.ru. 3600 A 10.149.1.213
+send
+quit

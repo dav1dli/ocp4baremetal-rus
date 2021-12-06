@@ -129,6 +129,7 @@ Groups whitelist: files/openshift-groups.txt - синхронизация час
 * сконфигурированный LDAP IDP
 * LDAP secret
 * проект ldap-sync
+* расписание: ежечасно
 
 * Создать проект: `oc new-project ldap-sync`
 * Создать service account: `oc create -f files/ldap-sync-sa.yaml`
@@ -137,7 +138,7 @@ Groups whitelist: files/openshift-groups.txt - синхронизация час
 * Выдать роль SA: `oc create -f files/ldap-sync-rolebnd.yaml`
 * Создать конфигурацию cron job: `oc create -f files/ldap-sync-configmap.yaml`
 * Создать cron job: `oc create -f files/ldap-sync-job.yaml`
- 
+
 ## Отмена локального админ kubeadmin
 
 После того, как LDAP сконфигурирован и административные роли выданы, локальный админ может быть отключен: `oc delete secrets kubeadmin -n kube-system`
@@ -221,3 +222,393 @@ Token принадлежит Service Account teamcity, который необх
 * service account: files/sa-teamcity.yaml
 * role: files/sa-teamcity-role.yaml
 * role binding: files/sa-teamcity-rb.yaml
+
+## Инфраструктурные узлы
+На кластерах, обслуживающих реальные рагрузки рекомендуется выносить системные компоненты, такие как 
+routes, ingresses, image registry, metrics, logging, gitops, monitoring на отдельный набор инфраструктурных узлов. Рекомендованная конфигурация: 
+минимум 3 узла, разпределенные между узлами инфраструктуры и географически разнесенными зонами доступности.
+
+На гипервизоре создать 3 VM на разных серверах:  3x 4CPU, 16GB RAM, 200GB storage, DVD: fedora-coreos.iso
+
+Добавить хосты на DHCP /etc/dhcp/fixed-addresses.conf:
+* okd4-i0 { hardware ethernet 00:1c:42:71:cb:77; fixed-address 10.149.1.211; }
+* okd4-i1 { hardware ethernet 00:1c:42:14:73:29; fixed-address 10.149.1.212; }
+* okd4-i2 { hardware ethernet 00:1c:42:0e:ff:ad; fixed-address 10.149.1.213; }
+
+Для операции требуется root. 
+
+DNS:
+* okd4-i0.okd4.dev.example.ru. 10.149.1.211
+* okd4-i1.okd4.dev.example.ru. 10.149.1.212
+* okd4-i2.okd4.dev.example.ru. 10.149.1.213
+
+Для операции требуется root. На сервере dhcp1 есть скрипт /opt/libexec/nsupdate.sh, позволяющий добавлять хосты в DNS домен dev.example.ru.
+Синтаксис команд находится в файлах  nsupdate.A, nsupdate.PTR.
+
+Igntion: http://10.149.1.68/worker.ign
+
+Установить как новые VMs как цорерабочие узлы:
+```
+coreos.inst=yes
+coreos.inst.install_dev=sda
+coreos.inst.image_url=http://10.149.1.68/fedora-coreos.raw.xz
+coreos.inst.ignition_url=http://10.149.1.68/worker.ign
+coreos.inst.insecure
+rd.neednet=1
+ip=ens3:dhcp
+console=tty0 
+console=ttyS0
+```
+
+Присоединить новые узлы: 
+`oc get csr -o go-template='{{range .items}}{{if not .status}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}' | xargs oc adm certificate approve`
+
+Поменять метки узлов:
+```
+oc label node okd4-i0 node-role.kubernetes.io/infra=
+oc label node okd4-i1 node-role.kubernetes.io/infra=
+oc label node okd4-i2 node-role.kubernetes.io/infra=
+oc label node okd4-i0 node-role.kubernetes.io/worker-
+oc label node okd4-i1 node-role.kubernetes.io/worker-
+oc label node okd4-i2 node-role.kubernetes.io/worker-
+```
+
+Создать Machine Config Pool:
+```
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfigPool
+metadata:
+  name: infra
+spec:
+  machineConfigSelector:
+    matchExpressions:
+    - key: machineconfiguration.openshift.io/role
+      operator: In
+      values:
+      - worker
+      - compute
+  maxUnavailable: 1
+  nodeSelector:
+    matchLabels:
+      node-role.kubernetes.io/infra: ""
+  paused: false
+```
+oc create -f infra-machineconfigpool.yaml
+
+Проверка: `oc get nodes`
+
+```
+NAME      STATUS   ROLES    AGE     VERSION
+okd4-i0   Ready    infra    6m56s   v1.21.2+6438632-1505
+okd4-i1   Ready    infra    6m59s   v1.21.2+6438632-1505
+okd4-i2   Ready    infra    6m59s   v1.21.2+6438632-1505
+okd4-m0   Ready    master   25d     v1.21.2+6438632-1505
+okd4-m1   Ready    master   25d     v1.21.2+6438632-1505
+okd4-m2   Ready    master   25d     v1.21.2+6438632-1505
+okd4-w0   Ready    worker   25d     v1.21.2+6438632-1505
+okd4-w1   Ready    worker   25d     v1.21.2+6438632-1505
+okd4-w2   Ready    worker   25d     v1.21.2+6438632-1505
+```
+
+Проверка: `oc get mcp`
+```
+NAME     CONFIG                                             UPDATED   UPDATING   DEGRADED   MACHINECOUNT   READYMACHINECOUNT   UPDATEDMACHINECOUNT   DEGRADEDMACHINECOUNT   AGE
+infra    rendered-infra-656f113274fffc87b64ca7e8f007d5e9    True      False      False      3              3                   3                     0                      107s
+master   rendered-master-8d0f1b45c520f70300dbfe40b8d92d58   True      False      False      3              3                   3                     0                      25d
+worker   rendered-worker-656f113274fffc87b64ca7e8f007d5e9   False     True       False      6              3                   3                     0                      25d
+```
+
+Изменить defaultNodeSelector: `oc patch scheduler cluster --type=merge -p '{"spec":{"defaultNodeSelector":"node-role.kubernetes.io/app="}}'`
+
+## Рауты на инфра узлах
+Перенести рауты по умолчанию на инфра узлы: 
+```
+oc patch ingresscontrollers.operator.openshift.io default -n openshift-ingress-operator --type=merge \
+--patch '{"spec":{"nodePlacement":{"nodeSelector":{"matchLabels":{"node-role.kubernetes.io/infra":""}}}}}'
+```
+По числу инфра узлов создать 3 реплики раутов:
+```
+oc patch ingresscontrollers.operator.openshift.io default -n openshift-ingress-operator --type=merge \
+--patch '{"spec":{"replicas": 3}}'
+```
+
+Переконфигурировать балансировщик на инфра узлы: на okd4-lb2 в /etc/haproxy/haproxy.cfg:
+```
+frontend router_https
+    bind 0.0.0.0:443
+    default_backend router_https
+    mode tcp
+    option tcplog
+
+backend router_https
+    balance source
+    mode tcp
+    server infra0 okd4-i0.okd4.dev.example.ru:443 check
+    server infra1 okd4-i1.okd4.dev.example.ru:443 check
+    server infra2 okd4-i2.okd4.dev.example.ru:443 check
+
+frontend router_http
+    bind 0.0.0.0:80
+    default_backend router_http
+    mode tcp
+    option tcplog
+
+backend router_http
+    server infra0 okd4-i0.okd4.dev.example.ru:80 check
+    server infra1 okd4-i1.okd4.dev.example.ru:80 check
+    server infra2 okd4-i2.okd4.dev.example.ru:80 check
+```
+Перестартовать сервис: `service haproxy restart`
+
+Проверить доступность консоли на https://console-openshift-console.apps.okd.dev.example.ru/
+
+## Встроенный каталог образов на инфра узлах
+```
+oc patch configs.imageregistry.operator.openshift.io/cluster --type merge \
+  --patch '{"spec":{"nodeSelector":{"node-role.kubernetes.io/infra": ""}}}'
+oc patch configs.imageregistry,operator.openshift.io/cluster --type merge \
+  --patch '{{"spec": {"defaultRoute": true}}'
+```
+
+## Local volumes
+Поизводительность и надежность, предоставляемые самодельным NFS сервером могут быть недостаточными для компонентов,
+обрабатывающих большие объемы данных, поступающих с высокой скоростью, таким как мотиторинг и централизованные логи.
+В условиях отсутствия сетевого хранилища данных, способного удовлетворить эти требования, существует возможность 
+[использования локальных томов](https://docs.okd.io/latest/storage/persistent_storage/persistent-storage-local.html) (local volumes).
+Смысл заключается в том, что Local Storage Operator предоставляет доступ к дискам и файловым системам на узле. 
+Такой подход удовлетворяет потребности по стабильности и производительности, но затрудняет скалирование и выживаемость компонентов, 
+полагающихся на такой тип хранения данных. Альтернативой может быть интеграция с СХД, способной предоставлять тома подам в Openshift или 
+создание собственного решения, типа Ceph кластера СХД. 
+
+Несмотря на то, что написано в дoкументации, в текущей версии OKD4 Local Storage Operator недоступен в OperatorHub.
+Есть возможность установить оператор из [репозитория проекта](https://github.com/openshift/local-storage-operator), следуя
+[инструкциям](https://github.com/openshift/local-storage-operator/blob/master/docs/deploy-with-olm.md).
+
+Т.к. это решение призвано удовлетворить потребности инфраструктурных компонентов, то локальные тома реализованы на инфра узлах.
+
+Для этого требуется на уровне инфраструктуры добавить по 500ГБ диску узлам okd4-i0, okd4-i1, okd4-i2. 
+Для того, что бы была возможность увеличивать тома без их пересоздания, на добавленных дисках созданы логические тома с использованием LVM.
+Доступ к хостам осуществляется через SSH: ` ssh -i okd4_id_rsa core@okd4-i0.okd.dev.example.ru`.
+
+### На каждом хосте
+```
+pvcreate /dev/sdb
+vgcreate vg_locvol /dev/sdb
+lvcreate -L 250G -n lv_es vg_locvol
+lvcreate -L 100G  -n lv_prom vg_locvol
+lvcreate -L 50G  -n lv_alert vg_locvol
+```
+Созданные устройства: 
+* /dev/mapper/vg_locvol-lv_alert - алерты - 50GB
+* /dev/mapper/vg_locvol-lv_es - Elasticsearch - 250GB
+* /dev/mapper/vg_locvol-lv_prom - Prometheus - 100GB
+
+### Кластер
+
+* Создать проект: `oc adm new-project openshift-local-storage`
+* Установить оператор: `oc apply -f https://raw.githubusercontent.com/openshift/local-storage-operator/master/examples/olm/catalog-create-subscribe.yaml`
+* Создать тома и классы томов (storageclass):
+```
+oc create -f localstor-crd-es.yaml
+oc create -f localstor-crd-prom.yaml
+oc create -f localstor-crd-alert.yaml
+```
+
+Проверка: `oc get pv`
+```
+local-pv-11643fb5   100Gi      RWO            Delete           Available   localvol-sc-prom             94m
+local-pv-33825d56   250Gi      RWO            Delete           Available   localvol-sc-es               103m
+local-pv-401f48e6   100Gi      RWO            Delete           Available   localvol-sc-prom             94m
+local-pv-49fa7e8e   50Gi       RWO            Delete           Available   localvol-sc-alert            92m
+local-pv-6ee973c9   250Gi      RWO            Delete           Available   localvol-sc-es               103m
+local-pv-8fe18fa1   50Gi       RWO            Delete           Available   localvol-sc-alert            92m
+local-pv-a51c8183   50Gi       RWO            Delete           Available   localvol-sc-alert            92m
+local-pv-bf89516f   250Gi      RWO            Delete           Available   localvol-sc-es               103m
+local-pv-cd652af4   100Gi      RWO            Delete           Available   localvol-sc-prom             94m
+```
+Создано по 3 тома на каждый тип системного компонента для обеспечения работы 3х реплик каждого.
+
+## Elasticsearch
+Оператор Elasticsearch в данный момент недоступен в OperatorHub.
+
+
+## Логи
+Установка по умолчанию зависит от Elasticsearch поэтому функцияй в данный момент недоступна.
+
+## Мониторинг
+Мониторинг конфигурируется через configMap openshift-monitoring/cluster-monitoring-config: `oc apply -f monitoring-configmap.yaml`
+
+Интерфеисы:
+* [Prometheus dashboard](https://prometheus-k8s-openshift-monitoring.apps.okd.dev.example.ru/)
+* [Grafana](https://grafana-openshift-monitoring.apps.okd.dev.example.ru/)
+* [Alert Manager](https://alertmanager-main-openshift-monitoring.apps.okd.dev.example.ru/)
+
+## Высокодоступный балансировщик
+Архитектура кластера включает в себя балансировщик HAProxy, обеспечивающий распределение входящего траффика между несколькими копиями API сервера и раутов приложений.
+Однако, сам балансировщик создан в виде единственной копии и т.о. представляет собой слабое звено в в общем высокодоступной системе.
+Для повышения доступности применена высокодоступная конфигурация из 2х балансировщиков, работающих в активном-пассивном режиме. Входной виртуальный адрес находится на активном балансировщике. 
+Виртуальный адрес управляется сервисом keepalived.
+
+```
+        okd4-lb
+     +-----+------+------+-okd4-m0
+     |            |      |
++--------+   +--------+  +-okd4-m1
+|okd4-lb1|   |okd4-lb2|  |
++--------+   +--------+  +-okd4-m2
+```
+
+Для функционирования балансировщика требуется, что бы конфигурация DNS была завершена.
+
+Конфигурация балансировщика: files/haproxy.cfg
+
+Выполнить на обоих балансировщиках:
+
+Порты: 
+* 1936/tcp - status
+* 6443/tcp - Kubernetes API
+* 22623/tcp - machine config server
+* 443/tcp - ingress HTTPS
+* 80/tcp - ingress HTTP
+
+Установка:
+* создать 2 VM (2 CPU, 4GB RAM, 10GB disk) okd4-lb1, okd4-lb2; 
+* добавить okd4-lb, okd4-lb1, okd4-lb2 в DHCP
+* добавить okd4-lb, okd4-lb1, okd4-lb2 в DNS
+
+```
+server 10.149.1.22
+add okd4-lb.dev.example.ru. 3600 A 10.149.1.5
+add okd4-lb1.dev.example.ru. 3600 A 10.149.1.180
+add 5.1.149.10.in-addr.arpa. 3600 PTR okd4-lb.dev.example.ru.
+add 180.1.149.10.in-addr.arpa. 3600 PTR okd4-lb1.dev.example.ru.
+send
+quit
+```
+
+* установить VM с ISO CentOS8 x86_64 из библиотеки образов
+* системные операции: `dnf update`, `dnf install haproxy policycoreutils-python-utils keepalived psmisc`
+* конфигурация балансировщика: files/haproxy.cfg
+* Открыть порты в firewall:
+
+```
+firewall-cmd --permanent --add-port 1936/tcp
+firewall-cmd --permanent --add-port 6443/tcp
+firewall-cmd --permanent --add-port 22623/tcp
+firewall-cmd --permanent --add-port 443/tcp
+firewall-cmd --permanent --add-port=80/tcp
+firewall-cmd --permanent --add-rich-rule='rule protocol value="vrrp" accept'
+firewall-cmd --reload
+```
+
+* Fix SELinux: 
+
+```
+semanage port  -a 22623 -t http_port_t -p tcp
+semanage port -a 6443 -t http_port_t -p tcp
+semanage port -a 1936 -t http_port_t -p tcp
+semanage port -a 80 -t http_port_t -p tcp
+semanage port -a 443 -t http_port_t -p tcp
+setsebool -P haproxy_connect_any 1
+```
+
+* Старт: `systemctl start haproxy`
+* Стартовать автоматически: `systemctl enable haproxy`
+
+Keepalived:
+
+/etc/sysctl.conf:
+
+```
+net.ipv4.ip_forward = 1
+net.ipv4.ip_nonlocal_bind = 1
+```
+
+Restart: `sysctl -p`
+
+okd4-lb2 /etc/keepalived/keepalived.conf:
+
+```
+vrrp_script chk_haproxy {
+    script "killall -0 haproxy" # check the haproxy process
+    interval 2 # every 2 seconds
+    weight 2 # add 2 points if OK
+}
+vrrp_instance VI_1 {
+    state MASTER
+    interface ens3
+    virtual_router_id 5
+    priority 101
+    virtual_ipaddress {
+        10.149.1.5
+    }
+	track_script {
+        chk_haproxy
+    }
+}
+```
+
+okd4-lb1 /etc/keepalived/keepalived.conf:
+
+```
+vrrp_script chk_haproxy {
+    script "killall -0 haproxy" # check the haproxy process
+    interval 2 # every 2 seconds
+    weight 2 # add 2 points if OK
+}
+vrrp_instance VI_1 {
+    state BACKUP
+    interface ens3
+    virtual_router_id 5
+    priority 100
+    virtual_ipaddress {
+        10.149.1.5
+    }
+	track_script {
+        chk_haproxy
+    }
+}
+```
+
+На обеих узлах:
+
+```
+systemctl start keepalived
+systemctl enable keepalived
+```
+
+Проверить на мастере (okd4-lb2): `ip add show`
+
+```
+2: ens3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
+    link/ether 00:1c:42:7f:36:88 brd ff:ff:ff:ff:ff:ff
+    inet 10.149.1.203/24 brd 10.149.1.255 scope global dynamic noprefixroute ens3
+       valid_lft 1743sec preferred_lft 1743sec
+    inet 10.149.1.5/32 scope global ens3
+       valid_lft forever preferred_lft forever
+```
+
+Проверить failover: 
+* на мастере (okd4-lb2) `systemctl stop haproxy`
+* на бэкапе (okd4-lb1) `ip add show` VIP должен переключиться
+
+Отредактировать DNS:
+| Type | Name | IP |  Notes |
+|-------|--------|----|-----|
+|A |api.okd.dev.example.ru |10.149.1.5 |внешний Kubernetes API |
+|A |api-int.okd.dev.example.ru |10.149.1.5 |внутренний API |
+|A |*.apps.okd.dev.example.ru |10.149.1.5 |app ingress/routes |
+
+```
+server 10.149.1.22
+delete api.okd.dev.example.ru. A
+delete api-int.okd.dev.example.ru. A
+delete *.apps.okd.dev.example.ru. A
+add api.okd.dev.example.ru. 3600 A 10.149.1.5
+add api-int.okd.dev.example.ru. 3600 A 10.149.1.5
+add *.apps.okd.dev.example.ru. 3600 A 10.149.1.5
+send
+quit
+```
+
+Проверить доступ к консоли: https://console-openshift-console.apps.okd.dev.example.ru/

@@ -22,12 +22,9 @@ spec:
             - name: ldap-sync
               image: "openshift/origin-cli:latest"
               command:
-                - "/bin/bash"
-                - "-c"
-                - oc adm groups sync --type=ldap
-                - --sync-config=/etc/config/ldap-sync.yaml
-                - --whitelist=/etc/config/whitelist.txt
-                - --confirm 
+              - "/bin/bash"
+              - "-c"
+              - "/usr/bin/oc adm groups sync --type=ldap --sync-config=/etc/config/ldap-sync.yaml --whitelist=/etc/config/whitelist.txt --confirm"
               volumeMounts:
                 - mountPath: "/etc/config"
                   name: "ldap-sync-volume"
